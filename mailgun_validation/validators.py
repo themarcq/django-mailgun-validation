@@ -6,7 +6,10 @@ from mailgun_validation.exceptions import MailgunException
 import requests
 
 class EmailValidator(object):
-    message = _('Enter a valid email address.')
+    messages = {
+        'not_valid':  _('Not a valid email address'),
+        'hint': _('Did you mean'),
+    }
     code = 'invalid'
 
     def __init__(self, message=None, code=None, api_key=None):
@@ -18,14 +21,11 @@ class EmailValidator(object):
 
     def __call__(self, value):
         value = force_text(value)
-
+        
         if self.api_key is None:
             raise MailgunException('No API key was provided.')
-
-        validated = self.validate_address(value)
-
-        if not validated:
-            raise ValidationError(self.message, code=self.code)
+            
+        self.validate_address(value)
 
     def validate_address(self, email):
         response = requests.get(
@@ -35,11 +35,15 @@ class EmailValidator(object):
         )
         if response.ok:
             response_data = response.json()
-            return response_data['is_valid']
+            if not response['is_valid']:
+                hint = response.get('did_you_mean', False)
+                if not hint:
+                    raise ValidationError(self.messages['not_valid'], code=self.code)
+                else:
+                    raise ValidationError("{} {}?".format(self.messages['hint'], hint))
         else:
             raise MailgunException('Problems with the Mailgun web service')
-            
-        
+
 
 api_key = None
 if hasattr(settings, 'MAILGUN_API_KEY'):
